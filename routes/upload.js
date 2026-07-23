@@ -5,8 +5,15 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(process.cwd(), "uploads");
+
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const upload = multer({
-    dest: "../uploads/"
+    dest: uploadDir
 });
 
 router.post("/", upload.single("document"), (req, res) => {
@@ -20,15 +27,13 @@ router.post("/", upload.single("document"), (req, res) => {
     }
 
     const customerFolder = path.join(
-        __dirname,
-        "../storage",
+        process.cwd(),
+        "storage",
         customerDid.replace(/:/g, "_")
     );
 
     if (!fs.existsSync(customerFolder)) {
-        return res.status(404).json({
-            message: "Customer not found"
-        });
+        fs.mkdirSync(customerFolder, { recursive: true });
     }
 
     const destination = path.join(
