@@ -1,10 +1,14 @@
 {
   "name": "kyc-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "KYC Server",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +17,9 @@
   "dependencies": {
     "express": "^5.2.1",
     "multer": "^2.2.0",
-    "nodemon": "^3.1.14",
     "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

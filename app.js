@@ -11,12 +11,14 @@ app.get("/", (req, res) => {
     res.json({
         message: "Welcome to KYC Server"
     });
-
 });
 
 app.use("/register", registerRoute);
 app.use("/upload", uploadRoute);
 
-app.listen(8000, () => {
-    console.log("Server running on port 8000");
+// Use the port provided by Google Cloud, or 8000 for local development
+const PORT = process.env.PORT || 8000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
