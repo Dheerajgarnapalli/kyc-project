@@ -8,7 +8,7 @@ const { Storage } = require("@google-cloud/storage");
 
 // Google Cloud Storage
 const storage = new Storage();
-const bucket = storage.bucket("kyc-documents-team14"); // <-- Replace with your bucket name
+const bucket = storage.bucket("kyc-documents-team14");
 
 // Temporary uploads folder
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -22,40 +22,67 @@ const upload = multer({
 });
 
 router.post("/", upload.single("document"), async (req, res) => {
-
     try {
-
         const customerDid = req.body.customerDid;
 
         if (!customerDid) {
             return res.status(400).json({
-                message: "Customer DID Missing"
+                success: false,
+                message: "Customer DID is required"
             });
         }
 
         if (!req.file) {
             return res.status(400).json({
+                success: false,
                 message: "No file uploaded"
             });
         }
 
-        // Upload to Cloud Storage
+        // Replace ":" because folder names use "_"
+        const customerFolder = customerDid.replace(/:/g, "_");
+
+        // Check if customer exists
+        const customerFile = bucket.file(
+            `customers/${customerFolder}/customer.json`
+        );
+
+        const [exists] = await customerFile.exists();
+
+        if (!exists) {
+            // Remove temporary file
+            fs.unlinkSync(req.file.path);
+
+            return res.status(404).json({
+                success: false,
+                message: "Invalid Customer DID. Customer not found."
+            });
+        }
+
+        // Upload document to Cloud Storage
+        const destination = `customers/${customerFolder}/${req.file.originalname}`;
+
         await bucket.upload(req.file.path, {
-            destination: `${customerDid}/${req.file.originalname}`
+            destination: destination
         });
 
-        // Delete temporary local file
+        // Delete temporary file
         fs.unlinkSync(req.file.path);
 
-        res.json({
+        res.status(200).json({
             success: true,
             message: "Document uploaded successfully",
             customerDid: customerDid,
-            file: req.file.originalname,
-            bucketPath: `${customerDid}/${req.file.originalname}`
+            fileName: req.file.originalname,
+            bucketPath: destination
         });
 
     } catch (err) {
+
+        // Delete temp file if it exists
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
 
         console.error(err);
 
@@ -64,9 +91,7 @@ router.post("/", upload.single("document"), async (req, res) => {
             message: "Upload failed",
             error: err.message
         });
-
     }
-
 });
 
 module.exports = router;
