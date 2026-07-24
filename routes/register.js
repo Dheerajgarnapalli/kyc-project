@@ -4,6 +4,8 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const bucket = require("../gcs");
 
+const bankName = "Lloyds Bank";
+
 router.post("/", async (req, res) => {
 
     try {
@@ -35,7 +37,9 @@ router.post("/", async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message: "User already registered",
-                customerDid: existingUser.customerDid
+                customerDid: existingUser.customerDid,
+                bankName,
+                message: `Registered in ${bankName}`
             });
         }
 
@@ -44,7 +48,8 @@ router.post("/", async (req, res) => {
         users.push({
             customerDid,
             name,
-            email
+            email,
+            bankName
         });
 
         await usersFile.save(
@@ -57,7 +62,8 @@ router.post("/", async (req, res) => {
         const customer = {
             customerDid,
             name,
-            email
+            email,
+            bankName
         };
 
         await bucket.file(
@@ -72,7 +78,8 @@ router.post("/", async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Customer Registered Successfully",
-            customerDid
+            customerDid,
+            bankName
         });
 
     } catch (err) {
@@ -81,7 +88,8 @@ router.post("/", async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: err.message
+            message: err.message,
+            bankName
         });
 
     }
