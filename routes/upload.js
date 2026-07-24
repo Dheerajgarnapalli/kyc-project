@@ -4,8 +4,13 @@ const router = express.Router();
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const { Storage } = require("@google-cloud/storage");
 
-// Create uploads directory if it doesn't exist
+// Google Cloud Storage
+const storage = new Storage();
+const bucket = storage.bucket("kyc-documents-team14"); // <-- Replace with your bucket name
+
+// Temporary uploads folder
 const uploadDir = path.join(process.cwd(), "uploads");
 
 if (!fs.existsSync(uploadDir)) {
@@ -16,36 +21,51 @@ const upload = multer({
     dest: uploadDir
 });
 
-router.post("/", upload.single("document"), (req, res) => {
+router.post("/", upload.single("document"), async (req, res) => {
 
-    const customerDid = req.body.customerDid;
+    try {
 
-    if (!customerDid) {
-        return res.status(400).json({
-            message: "Customer DID Missing"
+        const customerDid = req.body.customerDid;
+
+        if (!customerDid) {
+            return res.status(400).json({
+                message: "Customer DID Missing"
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                message: "No file uploaded"
+            });
+        }
+
+        // Upload to Cloud Storage
+        await bucket.upload(req.file.path, {
+            destination: `${customerDid}/${req.file.originalname}`
         });
+
+        // Delete temporary local file
+        fs.unlinkSync(req.file.path);
+
+        res.json({
+            success: true,
+            message: "Document uploaded successfully",
+            customerDid: customerDid,
+            file: req.file.originalname,
+            bucketPath: `${customerDid}/${req.file.originalname}`
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            success: false,
+            message: "Upload failed",
+            error: err.message
+        });
+
     }
-
-    const customerFolder = path.join(
-        process.cwd(),
-        "storage",
-        customerDid.replace(/:/g, "_")
-    );
-
-    if (!fs.existsSync(customerFolder)) {
-        fs.mkdirSync(customerFolder, { recursive: true });
-    }
-
-    const destination = path.join(
-        customerFolder,
-        req.file.originalname
-    );
-
-    fs.renameSync(req.file.path, destination);
-
-    res.json({
-        message: "Document uploaded successfully"
-    });
 
 });
 
