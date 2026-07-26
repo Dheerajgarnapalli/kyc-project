@@ -37,7 +37,6 @@ router.post("/", async (req, res) => {
                 success: false,
                 message: "User already registered",
                 customerDid: existingUser.customerDid,
-                bankName,
                 message: `Registered in ${bankName}`
             });
         }

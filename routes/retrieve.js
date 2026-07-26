@@ -74,39 +74,44 @@ router.post("/", async (req, res) => {
 
             const fileName = file.name.split("/").pop();
 
+            // Extract document type (proofOfIdentity, proofOfAddress, etc.)
+            const documentType = fileName.substring(
+                0,
+                fileName.lastIndexOf(".")
+            );
+
             // Download file from bucket
             const [buffer] = await file.download();
 
-            // Generate SHA256
+            // Generate SHA-256 hash
             const currentHash = crypto
                 .createHash("sha256")
                 .update(buffer)
                 .digest("hex");
 
-            // Stored hash
-            const storedHash =
-                customer.documents?.[fileName]?.hash;
+            // Get stored document metadata
+            const storedDocument = customer.documents?.[documentType];
 
-            if (!storedHash) {
+            if (!storedDocument) {
 
                 return res.status(400).json({
                     success: false,
-                    message: `Hash not found for ${fileName}`
+                    message: `Metadata not found for ${documentType}`
                 });
 
             }
 
             // Compare hashes
-            if (storedHash !== currentHash) {
+            if (storedDocument.hash !== currentHash) {
 
                 return res.status(403).json({
                     success: false,
-                    message: `Document tampered: ${fileName}`
+                    message: `${documentType} has been tampered with`
                 });
 
             }
 
-            // Generate signed URL only after verification
+            // Generate signed URL after verification
             const [url] = await file.getSignedUrl({
                 version: "v4",
                 action: "read",
@@ -114,7 +119,8 @@ router.post("/", async (req, res) => {
             });
 
             documents.push({
-                fileName,
+                documentType,
+                originalFileName: storedDocument.fileName,
                 hashVerified: true,
                 url
             });

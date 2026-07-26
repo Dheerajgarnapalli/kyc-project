@@ -18,7 +18,13 @@ const upload = multer({
     dest: uploadDir
 });
 
-router.post("/", upload.array("documents", 10), async (req, res) => {
+const uploadFields = upload.fields([
+    { name: "proofOfIdentity", maxCount: 1 },
+    { name: "proofOfAddress", maxCount: 1 },
+    { name: "proofOfDOB", maxCount: 1 }
+]);
+
+router.post("/", uploadFields, async (req, res) => {
 
     try {
 
@@ -31,7 +37,7 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
             });
         }
 
-        if (!req.files || req.files.length === 0) {
+        if (!req.files || Object.keys(req.files).length === 0) {
             return res.status(400).json({
                 success: false,
                 message: "No documents uploaded"
@@ -49,7 +55,7 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
 
         if (!exists) {
 
-            req.files.forEach(file => {
+            Object.values(req.files).flat().forEach(file => {
                 if (fs.existsSync(file.path)) {
                     fs.unlinkSync(file.path);
                 }
@@ -63,9 +69,7 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
 
         // Read users.json
         const usersFile = bucket.file("users/users.json");
-
         const [usersContents] = await usersFile.download();
-
         const users = JSON.parse(usersContents.toString());
 
         const userIndex = users.findIndex(
@@ -74,7 +78,7 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
 
         if (userIndex === -1) {
 
-            req.files.forEach(file => {
+            Object.values(req.files).flat().forEach(file => {
                 if (fs.existsSync(file.path)) {
                     fs.unlinkSync(file.path);
                 }
@@ -92,39 +96,50 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
 
         const uploadedDocuments = [];
 
-        // Process each uploaded file
-        for (const file of req.files) {
+        // Process each uploaded document
+        for (const [documentType, files] of Object.entries(req.files)) {
 
-            // Generate SHA-256 hash
+            const file = files[0];
+
+            // Read uploaded file
             const fileBuffer = fs.readFileSync(file.path);
 
+            // Generate SHA-256 hash
             const fileHash = crypto
                 .createHash("sha256")
                 .update(fileBuffer)
                 .digest("hex");
 
-            // Upload to GCS
-            const destination =
-                `customers/${customerFolder}/${file.originalname}`;
+            // Preserve original extension
+            const extension = path.extname(file.originalname);
 
+            // Store using document type as filename
+            const destination =
+                `customers/${customerFolder}/${documentType}${extension}`;
+
+            // Upload to Google Cloud Storage
             await bucket.upload(file.path, {
                 destination
             });
 
-            // Save hash in users.json
-            users[userIndex].documents[file.originalname] = {
+            // Save metadata in users.json
+            users[userIndex].documents[documentType] = {
+                fileName: file.originalname,
                 hash: fileHash,
                 uploadedAt: new Date().toISOString()
             };
 
             uploadedDocuments.push({
+                documentType,
                 fileName: file.originalname,
                 bucketPath: destination,
                 hash: fileHash
             });
 
-            // Delete local temp file
-            fs.unlinkSync(file.path);
+            // Delete temporary file
+            if (fs.existsSync(file.path)) {
+                fs.unlinkSync(file.path);
+            }
         }
 
         // Save updated users.json
@@ -144,8 +159,9 @@ router.post("/", upload.array("documents", 10), async (req, res) => {
 
     } catch (err) {
 
+        // Clean up temporary files if an error occurs
         if (req.files) {
-            req.files.forEach(file => {
+            Object.values(req.files).flat().forEach(file => {
                 if (fs.existsSync(file.path)) {
                     fs.unlinkSync(file.path);
                 }
