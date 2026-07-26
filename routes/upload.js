@@ -97,9 +97,15 @@ router.post("/", uploadFields, async (req, res) => {
         const uploadedDocuments = [];
 
         // Process each uploaded document
-        for (const [documentType, files] of Object.entries(req.files)) {
+        for (const [documentCategory, files] of Object.entries(req.files)) {
 
             const file = files[0];
+
+            // Example:
+            // proofOfIdentity -> Passport
+            // proofOfAddress -> Driving Licence
+            const selectedDocumentType =
+                req.body[`${documentCategory}Type`] || "";
 
             // Read uploaded file
             const fileBuffer = fs.readFileSync(file.path);
@@ -113,30 +119,32 @@ router.post("/", uploadFields, async (req, res) => {
             // Preserve original extension
             const extension = path.extname(file.originalname);
 
-            // Store using document type as filename
+            // Store using category as filename
             const destination =
-                `customers/${customerFolder}/${documentType}${extension}`;
+                `customers/${customerFolder}/${documentCategory}${extension}`;
 
             // Upload to Google Cloud Storage
             await bucket.upload(file.path, {
                 destination
             });
 
-            // Save metadata in users.json
-            users[userIndex].documents[documentType] = {
+            // Save metadata
+            users[userIndex].documents[documentCategory] = {
+                documentType: selectedDocumentType,
                 fileName: file.originalname,
                 hash: fileHash,
                 uploadedAt: new Date().toISOString()
             };
 
             uploadedDocuments.push({
-                documentType,
+                documentCategory,
+                documentType: selectedDocumentType,
                 fileName: file.originalname,
                 bucketPath: destination,
                 hash: fileHash
             });
 
-            // Delete temporary file
+            // Delete temp file
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
@@ -159,7 +167,7 @@ router.post("/", uploadFields, async (req, res) => {
 
     } catch (err) {
 
-        // Clean up temporary files if an error occurs
+        // Clean up temp files
         if (req.files) {
             Object.values(req.files).flat().forEach(file => {
                 if (fs.existsSync(file.path)) {

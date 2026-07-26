@@ -62,7 +62,6 @@ router.post("/", async (req, res) => {
                 customerDid,
                 name: customer.name,
                 email: customer.email,
-                bankName: customer.bankName,
                 documents: []
             });
 
@@ -74,44 +73,40 @@ router.post("/", async (req, res) => {
 
             const fileName = file.name.split("/").pop();
 
-            // Extract document type (proofOfIdentity, proofOfAddress, etc.)
-            const documentType = fileName.substring(
+            // proofOfIdentity.pdf -> proofOfIdentity
+            const documentCategory = fileName.substring(
                 0,
                 fileName.lastIndexOf(".")
             );
 
-            // Download file from bucket
+            // Download file
             const [buffer] = await file.download();
 
-            // Generate SHA-256 hash
+            // Generate current SHA-256 hash
             const currentHash = crypto
                 .createHash("sha256")
                 .update(buffer)
                 .digest("hex");
 
-            // Get stored document metadata
-            const storedDocument = customer.documents?.[documentType];
+            // Get stored metadata
+            const storedDocument = customer.documents?.[documentCategory];
 
             if (!storedDocument) {
-
                 return res.status(400).json({
                     success: false,
-                    message: `Metadata not found for ${documentType}`
+                    message: `Metadata not found for ${documentCategory}`
                 });
-
             }
 
-            // Compare hashes
+            // Verify integrity
             if (storedDocument.hash !== currentHash) {
-
                 return res.status(403).json({
                     success: false,
-                    message: `${documentType} has been tampered with`
+                    message: `${documentCategory} has been tampered with`
                 });
-
             }
 
-            // Generate signed URL after verification
+            // Generate signed URL
             const [url] = await file.getSignedUrl({
                 version: "v4",
                 action: "read",
@@ -119,8 +114,10 @@ router.post("/", async (req, res) => {
             });
 
             documents.push({
-                documentType,
+                documentCategory,
+                documentType: storedDocument.documentType,
                 originalFileName: storedDocument.fileName,
+                uploadedAt: storedDocument.uploadedAt,
                 hashVerified: true,
                 url
             });
@@ -133,7 +130,6 @@ router.post("/", async (req, res) => {
             customerDid,
             name: customer.name,
             email: customer.email,
-            bankName: customer.bankName,
             documents
         });
 
