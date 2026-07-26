@@ -4,19 +4,18 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const bucket = require("../gcs");
 
-const bankName = "Lloyds Bank";
-
 router.post("/", async (req, res) => {
 
     try {
 
-        const { name, email } = req.body;
+        const { name, email ,password , productType} = req.body;
 
-        if (!name || !email) {
+        if (!name || !email || !password || !productType) {
             return res.status(400).json({
-                message: "Name and Email are required"
+                message: "All fields are required"
             });
         }
+        const hashedPassword = require("crypto").createHash("sha256").update(password).digest("hex");
 
         const usersFile = bucket.file("users/users.json");
 
@@ -49,7 +48,8 @@ router.post("/", async (req, res) => {
             customerDid,
             name,
             email,
-            bankName
+            productType,
+            hashedPassword
         });
 
         await usersFile.save(
@@ -63,7 +63,8 @@ router.post("/", async (req, res) => {
             customerDid,
             name,
             email,
-            bankName
+            productType,
+            hashedPassword
         };
 
         await bucket.file(
@@ -79,7 +80,10 @@ router.post("/", async (req, res) => {
             success: true,
             message: "Customer Registered Successfully",
             customerDid,
-            bankName
+            productType,
+            name,
+            email
+
         });
 
     } catch (err) {
@@ -89,7 +93,7 @@ router.post("/", async (req, res) => {
         res.status(500).json({
             success: false,
             message: err.message,
-            bankName
+            productType 
         });
 
     }

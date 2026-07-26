@@ -4,11 +4,8 @@ const router = express.Router();
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
-const { Storage } = require("@google-cloud/storage");
-
-// Google Cloud Storage
-const storage = new Storage();
-const bucket = storage.bucket("kyc-documents-team14");
+const crypto = require("crypto");
+const bucket = require("../gcs");
 
 // Temporary uploads folder
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -21,8 +18,10 @@ const upload = multer({
     dest: uploadDir
 });
 
-router.post("/", upload.single("document"), async (req, res) => {
+router.post("/", upload.array("documents", 10), async (req, res) => {
+
     try {
+
         const customerDid = req.body.customerDid;
 
         if (!customerDid) {
@@ -32,17 +31,16 @@ router.post("/", upload.single("document"), async (req, res) => {
             });
         }
 
-        if (!req.file) {
+        if (!req.files || req.files.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "No file uploaded"
+                message: "No documents uploaded"
             });
         }
 
-        // Replace ":" because folder names use "_"
         const customerFolder = customerDid.replace(/:/g, "_");
 
-        // Check if customer exists
+        // Check customer exists
         const customerFile = bucket.file(
             `customers/${customerFolder}/customer.json`
         );
@@ -50,8 +48,12 @@ router.post("/", upload.single("document"), async (req, res) => {
         const [exists] = await customerFile.exists();
 
         if (!exists) {
-            // Remove temporary file
-            fs.unlinkSync(req.file.path);
+
+            req.files.forEach(file => {
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+            });
 
             return res.status(404).json({
                 success: false,
@@ -59,29 +61,95 @@ router.post("/", upload.single("document"), async (req, res) => {
             });
         }
 
-        // Upload document to Cloud Storage
-        const destination = `customers/${customerFolder}/${req.file.originalname}`;
+        // Read users.json
+        const usersFile = bucket.file("users/users.json");
 
-        await bucket.upload(req.file.path, {
-            destination: destination
-        });
+        const [usersContents] = await usersFile.download();
 
-        // Delete temporary file
-        fs.unlinkSync(req.file.path);
+        const users = JSON.parse(usersContents.toString());
+
+        const userIndex = users.findIndex(
+            user => user.customerDid === customerDid
+        );
+
+        if (userIndex === -1) {
+
+            req.files.forEach(file => {
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+            });
+
+            return res.status(404).json({
+                success: false,
+                message: "Customer not found in users.json"
+            });
+        }
+
+        if (!users[userIndex].documents) {
+            users[userIndex].documents = {};
+        }
+
+        const uploadedDocuments = [];
+
+        // Process each uploaded file
+        for (const file of req.files) {
+
+            // Generate SHA-256 hash
+            const fileBuffer = fs.readFileSync(file.path);
+
+            const fileHash = crypto
+                .createHash("sha256")
+                .update(fileBuffer)
+                .digest("hex");
+
+            // Upload to GCS
+            const destination =
+                `customers/${customerFolder}/${file.originalname}`;
+
+            await bucket.upload(file.path, {
+                destination
+            });
+
+            // Save hash in users.json
+            users[userIndex].documents[file.originalname] = {
+                hash: fileHash,
+                uploadedAt: new Date().toISOString()
+            };
+
+            uploadedDocuments.push({
+                fileName: file.originalname,
+                bucketPath: destination,
+                hash: fileHash
+            });
+
+            // Delete local temp file
+            fs.unlinkSync(file.path);
+        }
+
+        // Save updated users.json
+        await usersFile.save(
+            JSON.stringify(users, null, 2),
+            {
+                contentType: "application/json"
+            }
+        );
 
         res.status(200).json({
             success: true,
-            message: "Document uploaded successfully",
-            customerDid: customerDid,
-            fileName: req.file.originalname,
-            bucketPath: destination
+            message: "Documents uploaded successfully",
+            customerDid,
+            documents: uploadedDocuments
         });
 
     } catch (err) {
 
-        // Delete temp file if it exists
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
+        if (req.files) {
+            req.files.forEach(file => {
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+            });
         }
 
         console.error(err);
@@ -92,6 +160,7 @@ router.post("/", upload.single("document"), async (req, res) => {
             error: err.message
         });
     }
+
 });
 
 module.exports = router;
