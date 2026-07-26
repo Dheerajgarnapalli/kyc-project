@@ -2,20 +2,26 @@ const express = require("express");
 const router = express.Router();
 
 const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const bucket = require("../gcs");
 
 router.post("/", async (req, res) => {
 
     try {
 
-        const { name, email ,password , productType} = req.body;
+        const { name, email, password, productType } = req.body;
 
         if (!name || !email || !password || !productType) {
             return res.status(400).json({
+                success: false,
                 message: "All fields are required"
             });
         }
-        const hashedPassword = require("crypto").createHash("sha256").update(password).digest("hex");
+
+        const hashedPassword = crypto
+            .createHash("sha256")
+            .update(password)
+            .digest("hex");
 
         const usersFile = bucket.file("users/users.json");
 
@@ -28,29 +34,69 @@ router.post("/", async (req, res) => {
             users = JSON.parse(contents.toString());
         }
 
+        // Check whether user already exists
         const existingUser = users.find(
             user => user.email.toLowerCase() === email.toLowerCase()
         );
 
         if (existingUser) {
-            return res.status(409).json({
-                success: false,
-                message: "User already registered",
+
+            // Create products object if missing
+            if (!existingUser.products) {
+                existingUser.products = {};
+            }
+
+            // Product already registered
+            if (existingUser.products[productType]) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Already registered for ${productType}`,
+                    customerDid: existingUser.customerDid
+                });
+            }
+
+            // Register new product
+            existingUser.products[productType] = {
+                hashedPassword
+            };
+
+            await usersFile.save(
+                JSON.stringify(users, null, 2),
+                {
+                    contentType: "application/json"
+                }
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: `${productType} registered successfully`,
                 customerDid: existingUser.customerDid,
-                message: `Registered in ${bankName}`
+                name: existingUser.name,
+                email: existingUser.email,
+                productType
             });
         }
 
+        // --------------------------
+        // New Customer Registration
+        // --------------------------
+
         const customerDid = "did:bank:" + uuidv4();
 
-        users.push({
+        const newUser = {
             customerDid,
             name,
             email,
-            productType,
-            hashedPassword
-        });
+            products: {
+                [productType]: {
+                    hashedPassword
+                }
+            }
+        };
 
+        users.push(newUser);
+
+        // Save users.json
         await usersFile.save(
             JSON.stringify(users, null, 2),
             {
@@ -58,12 +104,11 @@ router.post("/", async (req, res) => {
             }
         );
 
+        // Save customer.json
         const customer = {
             customerDid,
             name,
-            email,
-            productType,
-            hashedPassword
+            email
         };
 
         await bucket.file(
@@ -79,10 +124,9 @@ router.post("/", async (req, res) => {
             success: true,
             message: "Customer Registered Successfully",
             customerDid,
-            productType,
             name,
-            email
-
+            email,
+            productType
         });
 
     } catch (err) {
@@ -91,8 +135,7 @@ router.post("/", async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: err.message,
-            productType 
+            message: err.message
         });
 
     }

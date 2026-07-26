@@ -1,10 +1,13 @@
 const express = require("express");
 const router = express.Router();
+
 const crypto = require("crypto");
 const bucket = require("../gcs");
 
 router.post("/", async (req, res) => {
+
     try {
+
         const { email, password, productType } = req.body;
 
         if (!email || !password || !productType) {
@@ -14,7 +17,7 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // Hash the entered password
+        // Hash entered password
         const hashedPassword = crypto
             .createHash("sha256")
             .update(password)
@@ -34,11 +37,9 @@ router.post("/", async (req, res) => {
         const [contents] = await usersFile.download();
         const users = JSON.parse(contents.toString());
 
-        // Find user by email and product type
+        // Find user by email
         const existingUser = users.find(
-            user =>
-                user.email.toLowerCase() === email.toLowerCase() &&
-                user.productType === productType
+            user => user.email.toLowerCase() === email.toLowerCase()
         );
 
         if (!existingUser) {
@@ -48,8 +49,21 @@ router.post("/", async (req, res) => {
             });
         }
 
+        // Check whether the user has registered for this product
+        if (
+            !existingUser.products ||
+            !existingUser.products[productType]
+        ) {
+            return res.status(404).json({
+                success: false,
+                message: `User is not registered for ${productType}.`
+            });
+        }
+
         // Verify password
-        if (existingUser.hashedPassword !== hashedPassword) {
+        if (
+            existingUser.products[productType].hashedPassword !== hashedPassword
+        ) {
             return res.status(401).json({
                 success: false,
                 message: "Invalid password."
@@ -62,17 +76,20 @@ router.post("/", async (req, res) => {
             customerDid: existingUser.customerDid,
             name: existingUser.name,
             email: existingUser.email,
-            productType: existingUser.productType
+            productType
         });
 
     } catch (err) {
+
         console.error(err);
 
         return res.status(500).json({
             success: false,
             message: err.message
         });
+
     }
+
 });
 
 module.exports = router;
