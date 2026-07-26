@@ -1,13 +1,17 @@
 const express = require("express");
+const cors = require("cors");
 
 const registerRoute = require("./routes/register");
 const uploadRoute = require("./routes/upload");
 const retrieveRoute = require("./routes/retrieve");
 const loginRoute = require("./routes/login");
 
-
 const app = express();
 
+// Enable CORS
+app.use(cors());
+
+// Parse JSON
 app.use(express.json());
 
 app.get("/", (req, res) => {
