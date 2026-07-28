@@ -92,7 +92,7 @@ router.post("/", async (req, res) => {
                     hashedPassword
                 }
             },
-            kycStatus: "Unverified",
+            kycStatus: "Registered",
             kycHistory: []
         };
 
