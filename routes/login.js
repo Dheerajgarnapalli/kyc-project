@@ -76,7 +76,9 @@ router.post("/", async (req, res) => {
             customerDid: existingUser.customerDid,
             name: existingUser.name,
             email: existingUser.email,
-            productType
+            productType,
+            kycStatus: existingUser.kycStatus || "Unverified",
+            kycHistory: existingUser.kycHistory || []
         });
 
     } catch (err) {
