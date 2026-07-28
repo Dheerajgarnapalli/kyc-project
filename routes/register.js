@@ -91,7 +91,9 @@ router.post("/", async (req, res) => {
                 [productType]: {
                     hashedPassword
                 }
-            }
+            },
+            kycStatus: "Unverified",
+            kycHistory: []
         };
 
         users.push(newUser);
